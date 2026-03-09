@@ -1,5 +1,5 @@
 /*
- * Officina — Service Worker v11.1
+ * Officina — Service Worker v12.0
  * Strategia: Cache-first per il file HTML (che contiene tutto),
  * Network-first per eventuali risorse esterne.
  * 
@@ -7,7 +7,7 @@
  * quando Officina è ospitata su un server HTTPS (es. GitHub Pages).
  */
 
-const CACHE_NAME = 'officina-v11.1';
+const CACHE_NAME = 'officina-v12.0';
 const APP_FILES = [
     './',
     './index.html'
