@@ -587,15 +587,17 @@ Check your Browserslist config to be sure that your targets are set up correctly
                 return !!(crypto && crypto.subtle && crypto.subtle.deriveKey);
             },
 
-            // v11.1: Validate activation code checksum (8 hex identity + 4 hex signature = 12 chars)
-            async validateCode(code) {
+            // v12.1: Validate activation code against specific lodge identity
+            async validateCode(code, lodgeName, lodgeNumber, orient) {
                 const clean = code.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
                 if (clean.length !== 12) return false;
+                if (!lodgeName || !lodgeNumber || !orient) return false;
                 try {
                     const core = clean.substring(0, 8);
                     const sig = clean.substring(8, 12);
                     const enc = new TextEncoder();
-                    const hashBuf = await crypto.subtle.digest('SHA-256', enc.encode('SQUADRA_E_COMPASSO_' + core));
+                    const sigInput = 'SQUADRA_E_COMPASSO_' + core + '|' + lodgeName.trim().toUpperCase() + '|' + lodgeNumber.trim() + '|' + orient.trim().toUpperCase();
+                    const hashBuf = await crypto.subtle.digest('SHA-256', enc.encode(sigInput));
                     const hashArr = Array.from(new Uint8Array(hashBuf));
                     const expected = hashArr[0].toString(16).padStart(2, '0').toUpperCase()
                                    + hashArr[1].toString(16).padStart(2, '0').toUpperCase();
@@ -1610,41 +1612,20 @@ Check your Browserslist config to be sure that your targets are set up correctly
             const [search, setSearch] = useState('');
             const [showAdd, setShowAdd] = useState(false);
             const [editId, setEditId] = useState(null);
-            const [newC, setNewC] = useState({ lodgeName: '', lodgeNumber: '', orient: '', mvPhone: '', secPhone: '', email: '', workDay: '', workTime: '', notes: '' });
+            const [addFormKey, setAddFormKey] = useState(0);
 
             const filtered = contacts.filter(c => {
                 const q = search.toLowerCase();
                 return !q || c.lodgeName.toLowerCase().includes(q) || c.orient.toLowerCase().includes(q) || c.lodgeNumber.includes(q);
             }).sort((a, b) => a.lodgeName.localeCompare(b.lodgeName));
 
-            const addContact = () => { if (!newC.lodgeName.trim() || !newC.lodgeNumber.trim()) return; setContacts(prev => [...prev, { ...newC, id: 'c_' + Date.now(), isLocal: true }]); setNewC({ lodgeName: '', lodgeNumber: '', orient: '', mvPhone: '', secPhone: '', email: '', workDay: '', workTime: '', notes: '' }); setShowAdd(false); };
+            const addContact = () => { const v = id => (document.getElementById(id) || {}).value || ''; const nc = { lodgeName: v('ac-name'), lodgeNumber: v('ac-num'), orient: v('ac-or'), mvPhone: v('ac-mv'), secPhone: v('ac-sec'), email: v('ac-email'), workDay: v('ac-wd'), workTime: v('ac-wt'), notes: v('ac-notes') }; if (!nc.lodgeName.trim() || !nc.lodgeNumber.trim()) return; setContacts(prev => [...prev, { ...nc, id: 'c_' + Date.now(), isLocal: true }]); setAddFormKey(k => k + 1); setShowAdd(false); };
             const deleteContact = (id) => { if (confirm('Eliminare questo contatto?')) setContacts(prev => prev.filter(c => c.id !== id)); };
             const saveEdit = (id) => {
                 const f = (fid) => document.getElementById(fid)?.value || '';
                 setContacts(prev => prev.map(c => c.id === id ? { ...c, lodgeName: f(`ce-name-${id}`), lodgeNumber: f(`ce-num-${id}`), orient: f(`ce-or-${id}`), mvPhone: f(`ce-mv-${id}`), secPhone: f(`ce-sec-${id}`), email: f(`ce-email-${id}`), workDay: f(`ce-wd-${id}`), workTime: f(`ce-wt-${id}`), notes: f(`ce-notes-${id}`) } : c));
                 setEditId(null);
             };
-
-            const ContactForm = ({ prefix, vals, onChange, onSave, onCancel }) => (
-                <div className="p-3 bg-blue-50 border-b border-blue-200">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-                        <input type="text" placeholder="Nome Loggia *" value={vals.lodgeName} onChange={e => onChange({...vals, lodgeName: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                        <input type="text" placeholder="Numero *" value={vals.lodgeNumber} onChange={e => onChange({...vals, lodgeNumber: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                        <input type="text" placeholder="Oriente *" value={vals.orient} onChange={e => onChange({...vals, orient: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-                        <input type="tel" placeholder="Tel. MV" value={vals.mvPhone} onChange={e => onChange({...vals, mvPhone: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                        <input type="tel" placeholder="Tel. Segretario" value={vals.secPhone} onChange={e => onChange({...vals, secPhone: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                        <input type="email" placeholder="Email Loggia" value={vals.email} onChange={e => onChange({...vals, email: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                        <input type="text" placeholder="Giorno lavori (es. 1° e 3° lunedì)" value={vals.workDay} onChange={e => onChange({...vals, workDay: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                        <input type="text" placeholder="Orario (es. 20:00)" value={vals.workTime} onChange={e => onChange({...vals, workTime: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                    </div>
-                    <input type="text" placeholder="Note" value={vals.notes} onChange={e => onChange({...vals, notes: e.target.value})} className="w-full border rounded px-2 py-1.5 text-sm mb-2" />
-                    <div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-200 rounded">Annulla</button><button onClick={onSave} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 font-bold">Salva</button></div>
-                </div>
-            );
 
             return (
                 <div className="bg-white rounded-lg shadow-md border border-stone-200/60 overflow-hidden mb-4">
@@ -1655,7 +1636,26 @@ Check your Browserslist config to be sure that your targets are set up correctly
                             <button onClick={() => setShowAdd(true)} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded flex items-center gap-1 shrink-0"><Icon name="Plus" size={12} /> Nuova</button>
                         </div>
                     </div>
-                    {showAdd && <ContactForm prefix="new" vals={newC} onChange={setNewC} onSave={addContact} onCancel={() => setShowAdd(false)} />}
+                    {showAdd && (
+                        <div key={addFormKey} className="p-3 bg-blue-50 border-b border-blue-200">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+                                <input type="text" placeholder="Nome Loggia *" defaultValue="" id="ac-name" className="border rounded px-2 py-1.5 text-sm" />
+                                <input type="text" placeholder="Numero *" defaultValue="" id="ac-num" className="border rounded px-2 py-1.5 text-sm" />
+                                <input type="text" placeholder="Oriente *" defaultValue="" id="ac-or" className="border rounded px-2 py-1.5 text-sm" />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+                                <input type="tel" placeholder="Tel. MV" defaultValue="" id="ac-mv" className="border rounded px-2 py-1.5 text-sm" />
+                                <input type="tel" placeholder="Tel. Segretario" defaultValue="" id="ac-sec" className="border rounded px-2 py-1.5 text-sm" />
+                                <input type="email" placeholder="Email Loggia" defaultValue="" id="ac-email" className="border rounded px-2 py-1.5 text-sm" />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                                <input type="text" placeholder="Giorno lavori (es. 1° e 3° lunedì)" defaultValue="" id="ac-wd" className="border rounded px-2 py-1.5 text-sm" />
+                                <input type="text" placeholder="Orario (es. 20:00)" defaultValue="" id="ac-wt" className="border rounded px-2 py-1.5 text-sm" />
+                            </div>
+                            <input type="text" placeholder="Note" defaultValue="" id="ac-notes" className="w-full border rounded px-2 py-1.5 text-sm mb-2" />
+                            <div className="flex gap-2 justify-end"><button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-200 rounded">Annulla</button><button onClick={addContact} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 font-bold">Salva</button></div>
+                        </div>
+                    )}
                     <div className="divide-y divide-stone-100 max-h-[65vh] overflow-y-auto">
                         {filtered.length === 0 && <div className="p-8 text-center text-stone-400 italic">{contacts.length === 0 ? 'Nessun contatto. Aggiungi manualmente o carica una Pietra d\'Angolo.' : 'Nessun risultato per la ricerca.'}</div>}
                         {filtered.map(c => {
@@ -1720,7 +1720,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
             const [showAdd, setShowAdd] = useState(false);
             const [editId, setEditId] = useState(null);
             const [filterCat, setFilterCat] = useState('all');
-            const [newTx, setNewTx] = useState({ date: new Date().toISOString().slice(0,10), type: 'income', category: 'capitazioni', description: '', amount: '', notes: '', memberId: '' });
+            const [txFormKey, setTxFormKey] = useState(0);
             const allCats = [...INCOME_CATS, ...EXPENSE_CATS];
             const sortedMembers = [...(members || [])].sort((a,b) => a.name.localeCompare(b.name));
             const getMemberName = (id) => { const m = (members || []).find(x => String(x.id) === String(id)); return m ? m.name : ''; };
@@ -1731,7 +1731,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
             const totalExpense = yearTxs.filter(f => f.type === 'expense').reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
             const balance = totalIncome - totalExpense;
 
-            const addTx = () => { if (!newTx.description.trim() || !newTx.amount) return; setFinances(prev => [...prev, { ...newTx, id: 'tx_' + Date.now(), amount: parseFloat(newTx.amount) || 0 }]); setNewTx({ date: new Date().toISOString().slice(0,10), type: 'income', category: 'capitazioni', description: '', amount: '', notes: '', memberId: '' }); setShowAdd(false); };
+            const addTx = () => { const v = id => (document.getElementById(id) || {}).value || ''; const tx = { date: v('atx-date'), type: v('atx-type'), category: v('atx-cat'), description: v('atx-desc'), amount: parseFloat(v('atx-amt')) || 0, notes: v('atx-notes'), memberId: v('atx-member') }; if (!tx.description.trim() || !tx.amount) return; setFinances(prev => [...prev, { ...tx, id: 'tx_' + Date.now() }]); setTxFormKey(k => k + 1); setShowAdd(false); };
             const deleteTx = (id) => { if (confirm('Eliminare questo movimento?')) setFinances(prev => prev.filter(f => f.id !== id)); };
             const saveTxEdit = (id) => {
                 const f = (fid) => document.getElementById(fid)?.value || '';
@@ -1763,23 +1763,23 @@ Check your Browserslist config to be sure that your targets are set up correctly
                     )}
                     {/* Form aggiunta */}
                     {showAdd && (
-                        <div className="p-4 bg-green-50 border-b border-green-200">
+                        <div key={txFormKey} className="p-4 bg-green-50 border-b border-green-200">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                                <input type="date" value={newTx.date} onChange={e => setNewTx({...newTx, date: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
-                                <select value={newTx.type} onChange={e => setNewTx({...newTx, type: e.target.value, category: e.target.value === 'income' ? 'capitazioni' : 'capitazioni_goi'})} className="border rounded px-2 py-1.5 text-sm">
+                                <input type="date" defaultValue={new Date().toISOString().slice(0,10)} id="atx-date" className="border rounded px-2 py-1.5 text-sm" />
+                                <select defaultValue="income" id="atx-type" className="border rounded px-2 py-1.5 text-sm">
                                     <option value="income">Entrata</option><option value="expense">Uscita</option>
                                 </select>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                                <select value={newTx.category} onChange={e => setNewTx({...newTx, category: e.target.value})} className="border rounded px-2 py-1.5 text-sm">
-                                    {(newTx.type === 'income' ? INCOME_CATS : EXPENSE_CATS).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                                <select defaultValue="capitazioni" id="atx-cat" className="border rounded px-2 py-1.5 text-sm">
+                                    {[...INCOME_CATS, ...EXPENSE_CATS].map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                                 </select>
-                                <input type="number" step="0.01" min="0" placeholder="Importo €" value={newTx.amount} onChange={e => setNewTx({...newTx, amount: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
+                                <input type="number" step="0.01" min="0" placeholder="Importo €" defaultValue="" id="atx-amt" className="border rounded px-2 py-1.5 text-sm" />
                             </div>
-                            <input type="text" placeholder="Descrizione / Causale *" value={newTx.description} onChange={e => setNewTx({...newTx, description: e.target.value})} className="w-full border rounded px-2 py-1.5 text-sm mb-2" />
+                            <input type="text" placeholder="Descrizione / Causale *" defaultValue="" id="atx-desc" className="w-full border rounded px-2 py-1.5 text-sm mb-2" />
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                                <select value={newTx.memberId || ''} onChange={e => setNewTx({...newTx, memberId: e.target.value})} className="border rounded px-2 py-1.5 text-sm text-stone-600"><option value="">— Fratello (opzionale) —</option>{sortedMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-                                <input type="text" placeholder="Note" value={newTx.notes} onChange={e => setNewTx({...newTx, notes: e.target.value})} className="border rounded px-2 py-1.5 text-sm" />
+                                <select defaultValue="" id="atx-member" className="border rounded px-2 py-1.5 text-sm text-stone-600"><option value="">— Fratello (opzionale) —</option>{sortedMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                                <input type="text" placeholder="Note" defaultValue="" id="atx-notes" className="border rounded px-2 py-1.5 text-sm" />
                             </div>
                             <div className="flex gap-2 justify-end"><button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-200 rounded">Annulla</button><button onClick={addTx} className="px-4 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 font-bold">Registra</button></div>
                         </div>
@@ -1835,8 +1835,8 @@ Check your Browserslist config to be sure that your targets are set up correctly
         // --- AVVISI / PIETRA FILOSOFALE (v11.0) ---
         // === PIETRA FILOSOFALE COMPOSER ===
         const MessageComposer = ({ currentUser, lodgeSettings, showToast }) => {
-            const [msgTitle, setMsgTitle] = useState('');
-            const [msgBody, setMsgBody] = useState('');
+            
+            
             const [msgPriority, setMsgPriority] = useState('normal');
             const [sentMessages, setSentMessages] = useState(() => {
                 try { return JSON.parse(localStorage.getItem('officina_sent_messages') || '[]'); } catch { return []; }
@@ -1846,7 +1846,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
                 localStorage.setItem('officina_sent_messages', JSON.stringify(sentMessages.slice(0, 50)));
             }, [sentMessages]);
 
-            const exportPietraFilosofale = () => {
+            const exportPietraFilosofale = () => { const msgTitle = (document.getElementById('msg-title') || {}).value || ''; const msgBody = (document.getElementById('msg-body') || {}).value || '';
                 if (!msgBody.trim()) { alert('Scrivi il messaggio prima di esportare.'); return; }
                 const stone = {
                     stone: { type: 'philosophers', version: '1.0', encrypted: false, created: new Date().toISOString(), created_by: currentUser || 'Officina' },
@@ -1864,11 +1864,11 @@ Check your Browserslist config to be sure that your targets are set up correctly
                 const d = new Date().toISOString().slice(0,10);
                 a.href = url; a.download = `PietraFilosofale_${d}.json`; a.click();
                 URL.revokeObjectURL(url);
-                setSentMessages(prev => [{ id: Date.now(), title: msgTitle.trim() || 'Comunicazione', body: msgBody.trim(), priority: msgPriority, date: new Date().toISOString() }, ...prev]);
+                setSentMessages(prev => [{ id: Date.now(), title: (document.getElementById('msg-title') || {}).value?.trim() || 'Comunicazione', body: (document.getElementById('msg-body') || {}).value?.trim(), priority: msgPriority, date: new Date().toISOString() }, ...prev]);
                 showToast(`Pietra Filosofale esportata: ${a.download}`);
             };
 
-            const openMailto = () => {
+            const openMailto = () => { const msgTitle = (document.getElementById('msg-title') || {}).value || ''; const msgBody = (document.getElementById('msg-body') || {}).value || '';
                 const subject = encodeURIComponent(msgTitle.trim() || 'Comunicazione dalla Loggia');
                 const body = encodeURIComponent(msgBody.trim());
                 window.location.href = `mailto:?subject=${subject}&body=${body}`;
@@ -1882,13 +1882,13 @@ Check your Browserslist config to be sure that your targets are set up correctly
                         </div>
                         <div className="p-4 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="md:col-span-2"><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Oggetto</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" value={msgTitle} onChange={e => setMsgTitle(e.target.value)} placeholder="Es: Convocazione tornata straordinaria" /></div>
+                                <div className="md:col-span-2"><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Oggetto</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue="" id="msg-title" placeholder="Es: Convocazione tornata straordinaria" /></div>
                                 <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Priorità</label><select className="w-full border border-stone-300 rounded p-2 text-sm" value={msgPriority} onChange={e => setMsgPriority(e.target.value)}><option value="normal">Normale</option><option value="important">Importante</option><option value="urgent">Urgente</option></select></div>
                             </div>
-                            <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Messaggio</label><textarea className="w-full border border-stone-300 rounded p-2 text-sm h-48 resize-y" value={msgBody} onChange={e => setMsgBody(e.target.value)} placeholder={"Carissimi Fratelli,\n\nsi comunica che...\n\nCon fraterni saluti,\nIl Segretario"} /></div>
+                            <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Messaggio</label><textarea className="w-full border border-stone-300 rounded p-2 text-sm h-48 resize-y" defaultValue="" id="msg-body" placeholder={"Carissimi Fratelli,\n\nsi comunica che...\n\nCon fraterni saluti,\nIl Segretario"} /></div>
                             <div className="flex flex-wrap gap-3">
-                                <button onClick={exportPietraFilosofale} disabled={!msgBody.trim()} className="px-4 py-2 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 flex items-center gap-2 font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"><Icon name="Download" size={16} /> Esporta Pietra Filosofale</button>
-                                <button onClick={openMailto} disabled={!msgBody.trim()} className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center gap-2 font-bold disabled:opacity-40 disabled:cursor-not-allowed"><Icon name="Mail" size={16} /> Invia via Email</button>
+                                <button onClick={exportPietraFilosofale}  className="px-4 py-2 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 flex items-center gap-2 font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"><Icon name="Download" size={16} /> Esporta Pietra Filosofale</button>
+                                <button onClick={openMailto}  className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center gap-2 font-bold disabled:opacity-40 disabled:cursor-not-allowed"><Icon name="Mail" size={16} /> Invia via Email</button>
                                 <button onClick={() => { setMsgTitle(''); setMsgBody(''); setMsgPriority('normal'); }} className="px-4 py-2 bg-stone-200 text-stone-600 rounded text-sm hover:bg-stone-300 flex items-center gap-2"><Icon name="X" size={16} /> Svuota</button>
                             </div>
                             <div className="text-xs text-stone-400 italic bg-stone-50 rounded p-3"><b>Come funziona:</b> Scrivi il messaggio, clicca <b>Esporta Pietra Filosofale</b> per scaricare il file JSON. Invialo ai Fratelli via email, WhatsApp o altro canale. Quando un Fratello lo carica in Officina, vedrà il messaggio. In alternativa, usa <b>Invia via Email</b> per aprire il tuo client di posta con il testo già pronto.</div>
@@ -2334,7 +2334,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
             const handleEdit = (member) => { setCurrentMember({ office: '', isPastMaster: false, isWorshipfulMaster: false, email: '', phone: '', patentNumber: '', initiationDate: '', passingDate: '', raisingDate: '', affiliations: [], ...member, affiliations: Array.isArray(member.affiliations) ? member.affiliations : (member.affiliations && typeof member.affiliations === 'string' && member.affiliations.trim() ? [{ id: 'aff_m', type: 'altro', date: '', fromLodge: '', toLodge: '', notes: member.affiliations }] : []) }); setIsEditing(true); };
             const handleAdd = () => { setCurrentMember({ id: Date.now(), name: '', degree: '1', office: '', isPastMaster: false, isWorshipfulMaster: false, job: '', email: '', phone: '', notes: '', patentNumber: '', initiationDate: '', passingDate: '', raisingDate: '', affiliations: [] }); setIsEditing(true); };
             const handleDelete = (id) => { if(window.confirm("Sei sicuro di voler rimuovere questo Fratello dal Piedilista?")) { setMembers(prev => prev.filter(m => m.id !== id)); if (selectedIds) { setSelectedIds(prev => { if (!prev) return null; const next = new Set(prev); next.delete(id); return next.size === 0 ? null : next; }); } } };
-            const handleSave = () => { if (!currentMember.name.trim()) return; if (currentMember.isWorshipfulMaster) { currentMember.degree = '3'; } setMembers(prev => { const exists = prev.find(m => m.id === currentMember.id); if (exists) { return prev.map(m => m.id === currentMember.id ? currentMember : m); } else { return [...prev, currentMember]; } }); setIsEditing(false); setCurrentMember(null); };
+            const handleSave = () => { const v = id => (document.getElementById(id) || {}).value; const merged = { ...currentMember, name: v('mem-name') ?? currentMember.name, office: v('mem-office') ?? currentMember.office, job: v('mem-job') ?? currentMember.job, email: v('mem-email') ?? currentMember.email, phone: v('mem-phone') ?? currentMember.phone, notes: v('mem-notes') ?? currentMember.notes, patentNumber: v('mem-patent') ?? currentMember.patentNumber, initiationDate: v('mem-init') ?? currentMember.initiationDate, passingDate: v('mem-pass') ?? currentMember.passingDate, raisingDate: v('mem-raise') ?? currentMember.raisingDate }; if (!merged.name.trim()) return; if (merged.isWorshipfulMaster) { merged.degree = '3'; } setMembers(prev => { const exists = prev.find(m => m.id === merged.id); if (exists) { return prev.map(m => m.id === merged.id ? merged : m); } else { return [...prev, merged]; } }); setIsEditing(false); setCurrentMember(null); };
             const getDegreeLabel = (member) => { if (member.isWorshipfulMaster) return 'M:.V:.'; if (member.degree === '3') return 'M:.'; if (member.degree === '2') return 'C:.d:.A:.'; return 'App:.'; };
             const fmtDate = (d) => { if (!d) return null; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
             const hasInitiaticData = (m) => m.patentNumber || m.initiationDate || m.passingDate || m.raisingDate || (Array.isArray(m.affiliations) ? m.affiliations.length > 0 : !!m.affiliations);
@@ -2400,8 +2400,8 @@ Check your Browserslist config to be sure that your targets are set up correctly
                             {searchLower && <div className="text-xs text-stone-400 mt-1">{filteredMembers.length} risultat{filteredMembers.length === 1 ? 'o' : 'i'} su {members.length}</div>}
                         </div>
                     )}
-                    {isEditing && (<div className="p-4 bg-gradient-to-b from-amber-50/60 to-white border-b border-amber-100 no-print"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Nome e Cognome</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.name} onChange={e => setCurrentMember({...currentMember, name: e.target.value})} placeholder="Es: Mario Rossi"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Grado</label><select className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.degree} onChange={e => setCurrentMember({...currentMember, degree: e.target.value})} disabled={currentMember.isWorshipfulMaster}>{degrees.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div><div className="flex flex-col gap-2 justify-end pb-1"><label className="flex items-center gap-2 text-sm cursor-pointer select-none"><input type="checkbox" className="w-4 h-4 text-amber-600 rounded" checked={currentMember.isWorshipfulMaster} onChange={e => { const isMV = e.target.checked; setCurrentMember({...currentMember, isWorshipfulMaster: isMV, degree: isMV ? '3' : currentMember.degree })}} /><span className="font-bold text-amber-800">Maestro Venerabile in Carica</span></label><label className="flex items-center gap-2 text-sm cursor-pointer select-none"><input type="checkbox" className="w-4 h-4 text-amber-600 rounded" checked={currentMember.isPastMaster} onChange={e => setCurrentMember({...currentMember, isPastMaster: e.target.checked})} /><span className="font-bold text-stone-700">Ex Maestro Venerabile</span></label></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Carica Ricoperta</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.office} onChange={e => setCurrentMember({...currentMember, office: e.target.value})} placeholder="Es: 1° Sorvegliante"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Professione</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.job} onChange={e => setCurrentMember({...currentMember, job: e.target.value})} placeholder="Es: Avvocato"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Email</label><input type="email" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.email || ''} onChange={e => setCurrentMember({...currentMember, email: e.target.value})} placeholder="Es: mario.rossi@email.it"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Telefono</label><input type="tel" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.phone || ''} onChange={e => setCurrentMember({...currentMember, phone: e.target.value})} placeholder="Es: 333-1234567"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Note</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.notes} onChange={e => setCurrentMember({...currentMember, notes: e.target.value})} placeholder="Es: Assente giustificato"/></div></div>
-                    <div className="border-t border-amber-300 pt-3 mt-1 mb-4"><div className="text-xs font-bold text-amber-700 uppercase mb-3 flex items-center gap-1.5"><Icon name="Shield" size={13} /> Dati Iniziatici e Matricolari</div><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">N° Brevetto</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm font-mono" value={currentMember.patentNumber || ''} onChange={e => setCurrentMember({...currentMember, patentNumber: e.target.value})} placeholder="Es: 12345"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Data Iniziazione</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.initiationDate || ''} onChange={e => setCurrentMember({...currentMember, initiationDate: e.target.value})}/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Passaggio Compagno</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.passingDate || ''} onChange={e => setCurrentMember({...currentMember, passingDate: e.target.value})}/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Elevazione Maestro</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.raisingDate || ''} onChange={e => setCurrentMember({...currentMember, raisingDate: e.target.value})}/></div></div>
+                    {isEditing && currentMember && (<div key={currentMember.id} className="p-4 bg-gradient-to-b from-amber-50/60 to-white border-b border-amber-100 no-print"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Nome e Cognome</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.name} id="mem-name" placeholder="Es: Mario Rossi"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Grado</label><select className="w-full border border-stone-300 rounded p-2 text-sm" value={currentMember.degree} onChange={e => setCurrentMember({...currentMember, degree: e.target.value})} disabled={currentMember.isWorshipfulMaster}>{degrees.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div><div className="flex flex-col gap-2 justify-end pb-1"><label className="flex items-center gap-2 text-sm cursor-pointer select-none"><input type="checkbox" className="w-4 h-4 text-amber-600 rounded" checked={currentMember.isWorshipfulMaster} onChange={e => { const isMV = e.target.checked; setCurrentMember({...currentMember, isWorshipfulMaster: isMV, degree: isMV ? '3' : currentMember.degree })}} /><span className="font-bold text-amber-800">Maestro Venerabile in Carica</span></label><label className="flex items-center gap-2 text-sm cursor-pointer select-none"><input type="checkbox" className="w-4 h-4 text-amber-600 rounded" checked={currentMember.isPastMaster} onChange={e => setCurrentMember({...currentMember, isPastMaster: e.target.checked})} /><span className="font-bold text-stone-700">Ex Maestro Venerabile</span></label></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Carica Ricoperta</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.office} id="mem-office" placeholder="Es: 1° Sorvegliante"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Professione</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.job} id="mem-job" placeholder="Es: Avvocato"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Email</label><input type="email" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.email || ''} id="mem-email" placeholder="Es: mario.rossi@email.it"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Telefono</label><input type="tel" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.phone || ''} id="mem-phone" placeholder="Es: 333-1234567"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Note</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.notes} id="mem-notes" placeholder="Es: Assente giustificato"/></div></div>
+                    <div className="border-t border-amber-300 pt-3 mt-1 mb-4"><div className="text-xs font-bold text-amber-700 uppercase mb-3 flex items-center gap-1.5"><Icon name="Shield" size={13} /> Dati Iniziatici e Matricolari</div><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">N° Brevetto</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm font-mono" defaultValue={currentMember.patentNumber || ''} id="mem-patent" placeholder="Es: 12345"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Data Iniziazione</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.initiationDate || ''} id="mem-init"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Passaggio Compagno</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.passingDate || ''} id="mem-pass"/></div><div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Elevazione Maestro</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue={currentMember.raisingDate || ''} id="mem-raise"/></div></div>
                     {/* Affiliazioni strutturate */}
                     <div className="mt-3">
                         <div className="flex items-center justify-between mb-2"><label className="text-xs font-bold text-stone-500 uppercase">Affiliazioni / Trasferimenti ({(currentMember.affiliations || []).length})</label><button type="button" onClick={() => setCurrentMember({...currentMember, affiliations: [...(currentMember.affiliations || []), { id: 'aff_' + Date.now(), type: 'affiliazione', date: '', fromLodge: '', toLodge: '', notes: '' }]})} className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 flex items-center gap-1"><Icon name="Plus" size={11} /> Aggiungi</button></div>
@@ -2535,8 +2535,8 @@ Check your Browserslist config to be sure that your targets are set up correctly
         };
 
         const AssignmentManager = ({ members, assignments, setAssignments }) => {
-            const [newAssignment, setNewAssignment] = useState({ id: null, memberId: '', date: '', task: '', completed: false, completedDate: '' });
-            const handleAdd = () => { if (!newAssignment.memberId || !newAssignment.date || !newAssignment.task.trim()) { alert("Compila tutti i campi"); return; } const assignment = { ...newAssignment, id: Date.now() }; setAssignments(prev => [...prev, assignment]); setNewAssignment({ id: null, memberId: '', date: '', task: '', completed: false, completedDate: '' }); };
+            const [assFormKey, setAssFormKey] = useState(0);
+            const handleAdd = () => { const v = id => (document.getElementById(id) || {}).value || ''; const a = { id: Date.now(), memberId: v('aas-member'), date: v('aas-date'), task: v('aas-task'), completed: false, completedDate: '' }; if (!a.memberId || !a.date || !a.task.trim()) { alert("Compila tutti i campi"); return; } setAssignments(prev => [...prev, a]); setAssFormKey(k => k + 1); };
             const handleDelete = (id) => { if(window.confirm("Cancellare questo incarico?")) { setAssignments(prev => prev.filter(a => a.id !== id)); } };
             const toggleComplete = (id) => { setAssignments(prev => prev.map(a => { if (a.id === id) { const newStatus = !a.completed; return { ...a, completed: newStatus, completedDate: newStatus ? new Date().toISOString().split('T')[0] : '' }; } return a; })); };
             const updateCompletionDate = (id, date) => { setAssignments(prev => prev.map(a => a.id === id ? { ...a, completedDate: date } : a)); };
@@ -2545,7 +2545,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
             return (
                 <div className="bg-white rounded-lg shadow-md border border-stone-200/60 overflow-hidden mb-4">
                     <div className="p-4 bg-gradient-to-r from-amber-50/60 to-stone-50/80 border-b border-amber-100 flex justify-between items-center"><h3 className="font-bold text-lg text-stone-800 flex items-center gap-2" style={{fontFamily:'var(--font-display)'}}><Icon name="Briefcase" size={20} /> Gestione Incarichi</h3></div>
-                    <div className="p-4 bg-gradient-to-b from-amber-50/60 to-white border-b border-amber-100 no-print"><div className="flex flex-col md:flex-row gap-4 items-end"><div className="flex-1 w-full"><label className="block text-xs font-bold text-stone-500 mb-1">Data Assegnazione</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" value={newAssignment.date} onChange={e => setNewAssignment({...newAssignment, date: e.target.value})} /></div><div className="flex-1 w-full"><label className="block text-xs font-bold text-stone-500 mb-1">Fratello</label><select className="w-full border border-stone-300 rounded p-2 text-sm" value={newAssignment.memberId} onChange={e => setNewAssignment({...newAssignment, memberId: e.target.value})}><option value="">-- Seleziona --</option>{[...members].sort((a,b) => a.name.localeCompare(b.name)).map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}</select></div><div className="flex-[2] w-full"><label className="block text-xs font-bold text-stone-500 mb-1">Attività</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" value={newAssignment.task} onChange={e => setNewAssignment({...newAssignment, task: e.target.value})} placeholder="Es: Preparazione Tavola..." /></div><button onClick={handleAdd} className="w-full md:w-auto bg-amber-600 text-white px-4 py-2 rounded text-sm hover:bg-amber-700 flex justify-center items-center gap-1 shadow-sm h-10 font-bold"><Icon name="Plus" size={16} /> Assegna</button></div></div>
+                    <div key={assFormKey} className="p-4 bg-gradient-to-b from-amber-50/60 to-white border-b border-amber-100 no-print"><div className="flex flex-col md:flex-row gap-4 items-end"><div className="flex-1 w-full"><label className="block text-xs font-bold text-stone-500 mb-1">Data Assegnazione</label><input type="date" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue="" id="aas-date" /></div><div className="flex-1 w-full"><label className="block text-xs font-bold text-stone-500 mb-1">Fratello</label><select className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue="" id="aas-member"><option value="">-- Seleziona --</option>{[...members].sort((a,b) => a.name.localeCompare(b.name)).map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}</select></div><div className="flex-[2] w-full"><label className="block text-xs font-bold text-stone-500 mb-1">Attività</label><input type="text" className="w-full border border-stone-300 rounded p-2 text-sm" defaultValue="" id="aas-task" placeholder="Es: Preparazione Tavola..." /></div><button onClick={handleAdd} className="w-full md:w-auto bg-amber-600 text-white px-4 py-2 rounded text-sm hover:bg-amber-700 flex justify-center items-center gap-1 shadow-sm h-10 font-bold"><Icon name="Plus" size={16} /> Assegna</button></div></div>
                     {/* BUG FIX v10.1: confronto === con String() per sicurezza */}
                     <div className="hidden md:block overflow-x-auto"><table className="w-full text-left border-collapse"><thead className="bg-stone-50 text-stone-500 text-xs uppercase font-bold"><tr><th className="p-3 border-b w-32">Assegnazione</th><th className="p-3 border-b w-1/4">Fratello</th><th className="p-3 border-b">Attività</th><th className="p-3 border-b text-center">Stato</th><th className="p-3 border-b w-32">Completamento</th><th className="p-3 border-b w-16 no-print"></th></tr></thead><tbody className="divide-y divide-stone-100 text-sm">{sortedAssignments.map(assign => { const member = members.find(m => String(m.id) === String(assign.memberId)); return (<tr key={assign.id} className="hover:bg-stone-50"><td className="p-3 font-medium whitespace-nowrap text-stone-600">{new Date(assign.date + 'T12:00:00').toLocaleDateString('it-IT')}</td><td className="p-3 font-bold text-stone-800">{member ? member.name : 'Sconosciuto'}</td><td className="p-3 text-stone-700">{assign.task}</td><td className="p-3 text-center"><button onClick={() => toggleComplete(assign.id)} className={`px-2 py-1 rounded text-xs font-bold ${assign.completed ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>{assign.completed ? 'Completato' : 'In Corso'}</button></td><td className="p-3">{assign.completed && (<input type="date" className="border border-stone-200 rounded p-1 text-xs" value={assign.completedDate} onChange={(e) => updateCompletionDate(assign.id, e.target.value)}/>)}</td><td className="p-3 text-right no-print"><button onClick={() => handleDelete(assign.id)} className="text-red-400 hover:text-red-600"><Icon name="Trash2" size={16}/></button></td></tr>); })}{sortedAssignments.length === 0 && <tr><td colSpan="6" className="p-8 text-center text-stone-400 italic">Nessun incarico.</td></tr>}</tbody></table></div>
                     <div className="md:hidden p-4 space-y-3 bg-stone-50">{sortedAssignments.map(assign => { const member = members.find(m => String(m.id) === String(assign.memberId)); return (<div key={assign.id} className="bg-white p-3 rounded shadow-sm border border-stone-200"><div className="flex justify-between items-start mb-2"><div className="text-xs font-bold text-stone-500 uppercase">{new Date(assign.date + 'T12:00:00').toLocaleDateString('it-IT', {weekday:'short', day:'numeric', month:'long'})}</div><button onClick={() => handleDelete(assign.id)} className="text-red-400"><Icon name="Trash2" size={16}/></button></div><div className="font-bold text-stone-800 mb-1">{member ? member.name : 'Sconosciuto'}</div><div className="text-sm text-stone-600 bg-stone-50 p-2 rounded mb-2">{assign.task}</div><div className="flex items-center justify-between border-t pt-2 border-stone-100"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assign.completed} onChange={() => toggleComplete(assign.id)} className="rounded text-green-600" /><span>{assign.completed ? 'Fatto' : 'Da fare'}</span></label>{assign.completed && (<input type="date" className="border border-stone-200 rounded p-1 text-xs" value={assign.completedDate} onChange={(e) => updateCompletionDate(assign.id, e.target.value)}/>)}</div></div>); })}{sortedAssignments.length === 0 && <div className="text-center text-stone-400 italic">Nessun incarico.</div>}</div>
@@ -2780,22 +2780,29 @@ Check your Browserslist config to be sure that your targets are set up correctly
         // ACTIVATION GATE — Schermata di attivazione prodotto
         // ══════════════════════════════════════════════════════════════════
         const ACTIVATION_KEY = 'officina_activation';
+        const LODGE_DATA_KEY = 'officina_lodge';
 
         const ActivationGate = ({ children }) => {
             const [activated, setActivated] = useState(false);
             const [checking, setChecking] = useState(true);
             const [code, setCode] = useState('');
+            const [lodgeName, setLodgeName] = useState('');
+            const [lodgeNumber, setLodgeNumber] = useState('');
+            const [orient, setOrient] = useState('');
             const [error, setError] = useState('');
             const [validating, setValidating] = useState(false);
             const [shakeKey, setShakeKey] = useState(0);
 
-            // Check stored activation on mount
             useEffect(() => {
                 (async () => {
                     const stored = localStorage.getItem(ACTIVATION_KEY);
-                    if (stored) {
-                        const valid = await OfficinaCrypto.validateCode(stored);
+                    const lodgeData = (() => { try { return JSON.parse(localStorage.getItem(LODGE_DATA_KEY)) || {}; } catch { return {}; } })();
+                    if (stored && lodgeData.lodgeName) {
+                        const valid = await OfficinaCrypto.validateCode(stored, lodgeData.lodgeName, lodgeData.lodgeNumber, lodgeData.orient);
                         if (valid) { setActivated(true); setChecking(false); return; }
+                        localStorage.removeItem(ACTIVATION_KEY);
+                    } else if (stored && !lodgeData.lodgeName) {
+                        // Codice vecchio senza dati Loggia: richiedi reattivazione
                         localStorage.removeItem(ACTIVATION_KEY);
                     }
                     setChecking(false);
@@ -2808,13 +2815,17 @@ Check your Browserslist config to be sure that your targets are set up correctly
             };
 
             const handleActivate = async () => {
+                if (!lodgeName.trim()) { setError('Inserisci il nome della Loggia'); setShakeKey(k => k + 1); return; }
+                if (!lodgeNumber.trim()) { setError('Inserisci il numero della Loggia'); setShakeKey(k => k + 1); return; }
+                if (!orient.trim()) { setError('Inserisci l\'Oriente'); setShakeKey(k => k + 1); return; }
                 const clean = code.replace(/-/g, '');
-                if (clean.length !== 12) { setError('Formato richiesto: XXXX-XXXX-XXXX (12 caratteri esadecimali)'); setShakeKey(k => k + 1); return; }
+                if (clean.length !== 12) { setError('Codice: formato XXXX-XXXX-XXXX (12 caratteri esadecimali)'); setShakeKey(k => k + 1); return; }
                 setValidating(true); setError('');
                 try {
-                    const valid = await OfficinaCrypto.validateCode(clean);
+                    const valid = await OfficinaCrypto.validateCode(clean, lodgeName, lodgeNumber, orient);
                     if (valid) {
                         localStorage.setItem(ACTIVATION_KEY, clean);
+                        localStorage.setItem(LODGE_DATA_KEY, JSON.stringify({ lodgeName: lodgeName.trim(), lodgeNumber: lodgeNumber.trim(), orient: orient.trim() }));
                         setActivated(true);
                     } else {
                         setError('Codice non valido. Richiedi il codice corretto al tuo amministratore.');
@@ -2826,6 +2837,8 @@ Check your Browserslist config to be sure that your targets are set up correctly
                 setValidating(false);
             };
 
+            const isComplete = lodgeName.trim() && lodgeNumber.trim() && orient.trim() && code.replace(/-/g,'').length >= 12;
+
             if (checking) return (
                 <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh',background:'#faf7f2'}}>
                     <div style={{color:'#b8860b',fontFamily:"'Cinzel',Georgia,serif",fontSize:'1.1rem',fontStyle:'italic'}}>Verifica attivazione...</div>
@@ -2834,68 +2847,70 @@ Check your Browserslist config to be sure that your targets are set up correctly
 
             if (activated) return children;
 
-            // --- Gate UI ---
             return (
                 <div style={{
                     minHeight:'100vh', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center',
                     background:'linear-gradient(145deg, #faf7f2 0%, #f5ecd7 50%, #faf7f2 100%)',
                     fontFamily:"'EB Garamond', Georgia, serif", padding:'2rem 1rem', position:'relative', overflow:'hidden'
                 }}>
-                    {/* Decorative background */}
                     <div style={{position:'fixed',inset:0,pointerEvents:'none',
                         background:'radial-gradient(ellipse 60% 40% at 50% 30%, rgba(184,134,11,0.05) 0%, transparent 70%), radial-gradient(ellipse 40% 30% at 80% 70%, rgba(180,134,11,0.04) 0%, transparent 60%)'
                     }}/>
 
-                    <div style={{position:'relative',zIndex:1,textAlign:'center',maxWidth:'420px',width:'100%'}}>
-                        {/* Square and Compass icon */}
+                    <div style={{position:'relative',zIndex:1,textAlign:'center',maxWidth:'460px',width:'100%'}}>
                         <div style={{margin:'0 auto 1.5rem',width:'80px',height:'80px',borderRadius:'50%',
                             background:'rgba(184,134,11,0.08)',border:'2px solid rgba(184,134,11,0.25)',
                             display:'flex',alignItems:'center',justifyContent:'center'}}>
                             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#b8860b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M2 20 L12 4 L22 20"/>
-                                <path d="M22 4 L12 20 L2 4"/>
-                                <circle cx="12" cy="12" r="2" fill="#b8860b" stroke="none"/>
+                                <path d="M2 20 L12 4 L22 20"/><path d="M22 4 L12 20 L2 4"/><circle cx="12" cy="12" r="2" fill="#b8860b" stroke="none"/>
                             </svg>
                         </div>
 
-                        {/* Title */}
-                        <div style={{letterSpacing:'0.25em',fontSize:'2.2rem',fontWeight:'600',color:'#b8860b',marginBottom:'0.25rem',textTransform:'uppercase',fontFamily:"'Cinzel',Georgia,serif"}}>
-                            OFFICINA
-                        </div>
-                        <div style={{letterSpacing:'0.15em',fontSize:'0.85rem',color:'#a39484',textTransform:'uppercase',marginBottom:'2.5rem'}}>
-                            Sistema di Gestione Loggia
-                        </div>
+                        <div style={{letterSpacing:'0.25em',fontSize:'2.2rem',fontWeight:'600',color:'#b8860b',marginBottom:'0.25rem',textTransform:'uppercase',fontFamily:"'Cinzel',Georgia,serif"}}>OFFICINA</div>
+                        <div style={{letterSpacing:'0.15em',fontSize:'0.85rem',color:'#a39484',textTransform:'uppercase',marginBottom:'2rem'}}>Sistema di Gestione Loggia</div>
 
-                        {/* Ornamental divider */}
-                        <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'2rem',color:'rgba(184,134,11,0.5)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'1.5rem',color:'rgba(184,134,11,0.5)'}}>
                             <div style={{flex:1,height:'1px',background:'linear-gradient(to right,transparent,rgba(184,134,11,0.3))'}}/>
-                            <span style={{fontSize:'0.9rem'}}>✦</span>
+                            <span style={{fontSize:'0.9rem'}}>{String.fromCharCode(10022)}</span>
                             <div style={{flex:1,height:'1px',background:'linear-gradient(to left,transparent,rgba(184,134,11,0.3))'}}/>
                         </div>
 
-                        {/* Card */}
                         <div style={{
                             background:'rgba(255,255,255,0.85)',border:'1px solid rgba(184,134,11,0.2)',borderRadius:'1rem',
-                            padding:'2rem',backdropFilter:'blur(12px)',textAlign:'center',
+                            padding:'1.75rem',backdropFilter:'blur(12px)',textAlign:'left',
                             boxShadow:'0 8px 32px rgba(120,90,50,0.08), 0 2px 8px rgba(120,90,50,0.04)'
                         }}>
-                            <div style={{marginBottom:'1.5rem'}}>
-                                <h3 style={{color:'#3c3226',fontSize:'1.1rem',margin:'0 0 0.5rem',letterSpacing:'0.05em',fontFamily:"'Cinzel',Georgia,serif"}}>Attivazione Richiesta</h3>
-                                <p style={{color:'#78716c',fontSize:'0.85rem',margin:0,lineHeight:1.6}}>
-                                    Inserisci il codice di attivazione fornito dall'amministratore per accedere a Officina.
-                                </p>
+                            <h3 style={{color:'#3c3226',fontSize:'1.1rem',margin:'0 0 0.75rem',letterSpacing:'0.05em',fontFamily:"'Cinzel',Georgia,serif",textAlign:'center'}}>Attivazione Loggia</h3>
+                            <p style={{color:'#78716c',fontSize:'0.8rem',margin:'0 0 1.25rem',lineHeight:1.6,textAlign:'center'}}>
+                                Inserisci i dati della Loggia e il codice di attivazione fornito dall'amministratore.
+                            </p>
+
+                            <div style={{marginBottom:'0.75rem'}}>
+                                <label style={{display:'block',fontSize:'0.7rem',fontWeight:'bold',color:'#78716c',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.25rem'}}>Nome Loggia</label>
+                                <input type="text" value={lodgeName} onChange={e => { setLodgeName(e.target.value); setError(''); }} placeholder="R.L. Cavalieri di San Giovanni di Scozia" style={{width:'100%',boxSizing:'border-box',background:'#faf7f2',border:'1.5px solid rgba(184,134,11,0.2)',borderRadius:'0.5rem',color:'#3c3226',padding:'0.65rem 0.75rem',fontSize:'0.95rem',outline:'none'}} />
+                            </div>
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem',marginBottom:'0.75rem'}}>
+                                <div>
+                                    <label style={{display:'block',fontSize:'0.7rem',fontWeight:'bold',color:'#78716c',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.25rem'}}>Numero</label>
+                                    <input type="text" value={lodgeNumber} onChange={e => { setLodgeNumber(e.target.value); setError(''); }} placeholder="534" style={{width:'100%',boxSizing:'border-box',background:'#faf7f2',border:'1.5px solid rgba(184,134,11,0.2)',borderRadius:'0.5rem',color:'#3c3226',padding:'0.65rem 0.75rem',fontSize:'0.95rem',outline:'none'}} />
+                                </div>
+                                <div>
+                                    <label style={{display:'block',fontSize:'0.7rem',fontWeight:'bold',color:'#78716c',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.25rem'}}>Oriente</label>
+                                    <input type="text" value={orient} onChange={e => { setOrient(e.target.value); setError(''); }} placeholder="Oriente di Parma" style={{width:'100%',boxSizing:'border-box',background:'#faf7f2',border:'1.5px solid rgba(184,134,11,0.2)',borderRadius:'0.5rem',color:'#3c3226',padding:'0.65rem 0.75rem',fontSize:'0.95rem',outline:'none'}} />
+                                </div>
+                            </div>
+
+                            <div style={{display:'flex',alignItems:'center',gap:'0.5rem',margin:'1rem 0 0.75rem',color:'rgba(184,134,11,0.4)'}}>
+                                <div style={{flex:1,height:'1px',background:'rgba(184,134,11,0.15)'}}/>
+                                <span style={{fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'#a39484'}}>Codice di Attivazione</span>
+                                <div style={{flex:1,height:'1px',background:'rgba(184,134,11,0.15)'}}/>
                             </div>
 
                             <div style={{marginBottom:'1rem'}}>
-                                <input
-                                    type="text"
-                                    value={code}
+                                <input type="text" value={code}
                                     onChange={e => { setCode(formatCode(e.target.value)); setError(''); }}
-                                    onKeyDown={e => e.key === 'Enter' && handleActivate()}
-                                    placeholder="XXXX-XXXX-XXXX"
-                                    maxLength={14}
-                                    autoComplete="off"
-                                    autoFocus
+                                    onKeyDown={e => e.key === 'Enter' && isComplete && handleActivate()}
+                                    placeholder="XXXX-XXXX-XXXX" maxLength={14} autoComplete="off"
                                     style={{
                                         width:'100%',boxSizing:'border-box',background:'#faf7f2',
                                         border:error ? '1.5px solid rgba(239,68,68,0.5)' : '1.5px solid rgba(184,134,11,0.3)',
@@ -2911,35 +2926,26 @@ Check your Browserslist config to be sure that your targets are set up correctly
                                     color:'#dc2626',fontSize:'0.8rem',marginBottom:'1rem',
                                     padding:'0.5rem 0.75rem',background:'rgba(239,68,68,0.06)',borderRadius:'0.375rem',
                                     animation:'shakeX 0.5s'
-                                }}>
-                                    {error}
-                                </div>
+                                }}>{error}</div>
                             )}
 
-                            <button
-                                onClick={handleActivate}
-                                disabled={validating || code.replace(/-/g,'').length < 12}
+                            <button onClick={handleActivate} disabled={validating || !isComplete}
                                 style={{
                                     width:'100%',padding:'0.875rem',border:'none',borderRadius:'0.5rem',
-                                    background: code.replace(/-/g,'').length >= 12
-                                        ? 'linear-gradient(135deg, #b8860b, #92690a)'
-                                        : 'rgba(168,162,158,0.3)',
-                                    color: code.replace(/-/g,'').length >= 12 ? '#fef3c7' : '#a8a29e',
+                                    background: isComplete ? 'linear-gradient(135deg, #b8860b, #92690a)' : 'rgba(168,162,158,0.3)',
+                                    color: isComplete ? '#fef3c7' : '#a8a29e',
                                     fontFamily:"'Cinzel', Georgia, serif",fontSize:'0.95rem',letterSpacing:'0.05em',
-                                    cursor: code.replace(/-/g,'').length >= 12 ? 'pointer' : 'not-allowed',
+                                    cursor: isComplete ? 'pointer' : 'not-allowed',
                                     transition:'all 0.2s',fontWeight:'600',
-                                    boxShadow: code.replace(/-/g,'').length >= 12 ? '0 4px 12px rgba(184,134,11,0.2)' : 'none'
+                                    boxShadow: isComplete ? '0 4px 12px rgba(184,134,11,0.2)' : 'none'
                                 }}
-                            >
-                                {validating ? 'Verifica in corso...' : 'Attiva Officina'}
-                            </button>
+                            >{validating ? 'Verifica in corso...' : 'Attiva Officina'}</button>
                         </div>
 
-                        {/* Footer note */}
-                        <p style={{color:'#78716c',fontSize:'0.75rem',marginTop:'1.5rem',lineHeight:1.6}}>
+                        <p style={{color:'#78716c',fontSize:'0.75rem',marginTop:'1.5rem',lineHeight:1.6,textAlign:'center'}}>
                             Il codice viene generato dall'<strong style={{color:'#57534e'}}>Officina del Maestro</strong> ed è univoco per ogni Loggia.
                         </p>
-                        <div style={{color:'#a39484',fontSize:'0.65rem',marginTop:'2rem',letterSpacing:'0.15em',textTransform:'uppercase',fontFamily:"'Cinzel',Georgia,serif"}}>
+                        <div style={{color:'#a39484',fontSize:'0.65rem',marginTop:'2rem',letterSpacing:'0.15em',textTransform:'uppercase',fontFamily:"'Cinzel',Georgia,serif",textAlign:'center'}}>
                             Officina v{APP_VERSION}
                         </div>
                     </div>
@@ -3049,7 +3055,16 @@ Check your Browserslist config to be sure that your targets are set up correctly
                 const gateCode = localStorage.getItem(ACTIVATION_KEY);
                 if (gateCode) {
                     const formatted = gateCode.match(/.{1,4}/g)?.join('-') || gateCode;
-                    setLodgeSettings(prev => prev.activationCode ? prev : {...prev, activationCode: formatted});
+                    setLodgeSettings(prev => ({...prev, activationCode: formatted}));
+                }
+
+                // v12.1: Load locked lodge identity from gate
+                const lodgeData = localStorage.getItem(LODGE_DATA_KEY);
+                if (lodgeData) {
+                    try {
+                        const ld = JSON.parse(lodgeData);
+                        setLodgeSettings(prev => ({...prev, lodgeName: ld.lodgeName || prev.lodgeName, lodgeNumber: ld.lodgeNumber || prev.lodgeNumber, orient: ld.orient || prev.orient}));
+                    } catch(e) {}
                 }
 
                 // v12: Try current key, fallback to legacy keys with migration
@@ -3084,7 +3099,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
                         setContacts(migrated.contacts || []);
                         setFinances(migrated.finances || []);
                         if (migrated.rituals) setRituals(migrated.rituals);
-                        if (migrated.settings) setLodgeSettings(prev => ({...DEFAULT_SETTINGS, ...migrated.settings}));
+                        if (migrated.settings) { const _ld = (() => { try { return JSON.parse(localStorage.getItem(LODGE_DATA_KEY) || 'null'); } catch { return null; } })(); setLodgeSettings(prev => ({...DEFAULT_SETTINGS, ...migrated.settings, ...(_ld ? { lodgeName: _ld.lodgeName, lodgeNumber: _ld.lodgeNumber, orient: _ld.orient } : {})})); }
                         if (migrated.rolesConfig && migrated.rolesConfig.length > 0) setRolesConfig(migrated.rolesConfig);
                         if (migratedFromLegacy) showToast('Dati importati dalla versione precedente', 'info');
                     } catch (e) {
@@ -3314,7 +3329,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
                         setContacts(migrated.contacts || []);
                         setFinances(migrated.finances || []);
                         if (migrated.rituals && migrated.rituals.sections?.length > 0) setRituals(migrated.rituals);
-                        if (migrated.settings) setLodgeSettings(prev => ({...DEFAULT_SETTINGS, ...migrated.settings}));
+                        if (migrated.settings) { const _ld = (() => { try { return JSON.parse(localStorage.getItem(LODGE_DATA_KEY) || 'null'); } catch { return null; } })(); setLodgeSettings(prev => ({...DEFAULT_SETTINGS, ...migrated.settings, ...(_ld ? { lodgeName: _ld.lodgeName, lodgeNumber: _ld.lodgeNumber, orient: _ld.orient } : {})})); }
                         if (migrated.rolesConfig && migrated.rolesConfig.length > 0) setRolesConfig(migrated.rolesConfig);
                         showToast('Dati ripristinati con successo');
                     }
@@ -3345,7 +3360,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
                     setContacts(migrated.contacts || []);
                     setFinances(migrated.finances || []);
                     if (migrated.rituals && migrated.rituals.sections?.length > 0) setRituals(migrated.rituals);
-                    if (migrated.settings) setLodgeSettings(prev => ({...DEFAULT_SETTINGS, ...migrated.settings}));
+                    if (migrated.settings) { const _ld = (() => { try { return JSON.parse(localStorage.getItem(LODGE_DATA_KEY) || 'null'); } catch { return null; } })(); setLodgeSettings(prev => ({...DEFAULT_SETTINGS, ...migrated.settings, ...(_ld ? { lodgeName: _ld.lodgeName, lodgeNumber: _ld.lodgeNumber, orient: _ld.orient } : {})})); }
                     if (migrated.rolesConfig && migrated.rolesConfig.length > 0) setRolesConfig(migrated.rolesConfig);
                     showToast('Dati ripristinati con successo');
                 }
@@ -3866,11 +3881,14 @@ Check your Browserslist config to be sure that your targets are set up correctly
                         )}
                         {settingsTab === 'lodge' && (
                             <div className="space-y-3">
-                                <p className="text-sm text-stone-600 mb-2">Dati identificativi della Loggia. Questi valori vengono usati nelle intestazioni e nei report.</p>
-                                <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Nome Loggia (senza numero)</label><input type="text" className="w-full border border-stone-300 rounded-lg p-2.5 text-sm" value={lodgeSettings.lodgeName} onChange={e => setLodgeSettings(prev => ({...prev, lodgeName: e.target.value}))} placeholder="R.L. Nome della Loggia" /></div>
-                                <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Numero Loggia</label><input type="text" className="w-full border border-stone-300 rounded-lg p-2.5 text-sm" value={lodgeSettings.lodgeNumber} onChange={e => setLodgeSettings(prev => ({...prev, lodgeNumber: e.target.value}))} placeholder="534" /></div>
-                                <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1">Oriente</label><input type="text" className="w-full border border-stone-300 rounded-lg p-2.5 text-sm" value={lodgeSettings.orient} onChange={e => setLodgeSettings(prev => ({...prev, orient: e.target.value}))} placeholder="Oriente di Parma" /></div>
-                                <div className="bg-stone-50 rounded p-3 text-xs text-stone-500 mt-2"><strong>Anteprima intestazione:</strong><br/><span className="font-bold text-stone-700">{lodgeSettings.lodgeName} n. {lodgeSettings.lodgeNumber}</span><br/><span className="italic">{lodgeSettings.orient}</span></div>
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center gap-2"><Icon name="Lock" size={16} className="shrink-0" /><span>I dati della Loggia sono stati definiti durante l'attivazione e non possono essere modificati.</span></div>
+                                <div className="bg-white border border-stone-200 rounded-lg p-4 space-y-3">
+                                    <div className="flex items-center justify-between"><span className="text-xs font-bold text-stone-500 uppercase">Nome Loggia</span><span className="text-sm text-stone-800 font-bold">{lodgeSettings.lodgeName}</span></div>
+                                    <div className="flex items-center justify-between"><span className="text-xs font-bold text-stone-500 uppercase">Numero</span><span className="text-sm text-stone-800 font-bold">{lodgeSettings.lodgeNumber}</span></div>
+                                    <div className="flex items-center justify-between"><span className="text-xs font-bold text-stone-500 uppercase">Oriente</span><span className="text-sm text-stone-800 font-bold">{lodgeSettings.orient}</span></div>
+                                </div>
+                                <div className="bg-stone-50 rounded p-3 text-xs text-stone-500"><strong>Anteprima intestazione:</strong><br/><span className="font-bold text-stone-700">{lodgeSettings.lodgeName} n. {lodgeSettings.lodgeNumber}</span><br/><span className="italic">{lodgeSettings.orient}</span></div>
+                                <div className="text-xs text-stone-400 italic text-center">Per modificare i dati della Loggia è necessario disattivare e riattivare la licenza.</div>
                             </div>
                         )}
                         {settingsTab === 'activation' && (
@@ -3882,7 +3900,7 @@ Check your Browserslist config to be sure that your targets are set up correctly
                                     <div className="flex items-center justify-between"><span className="text-xs font-bold text-stone-500 uppercase">Versione</span><span className="text-sm text-stone-700">{APP_VERSION}</span></div>
                                 </div>
                                 <div className="text-xs text-stone-400 italic text-center">Il codice è generato dall'Officina del Maestro ed è univoco per ogni Loggia.</div>
-                                <button onClick={() => { if (confirm('Vuoi disattivare Officina?\n\nI dati salvati NON verranno cancellati.\nDovrai reinserire un codice valido per rientrare.')) { localStorage.removeItem(ACTIVATION_KEY); location.reload(); } }} className="w-full text-center py-2 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">Disattiva licenza</button>
+                                <button onClick={() => { if (confirm('Vuoi disattivare Officina?\n\nI dati salvati NON verranno cancellati.\nDovrai reinserire i dati della Loggia e un codice valido per rientrare.')) { localStorage.removeItem(ACTIVATION_KEY); localStorage.removeItem(LODGE_DATA_KEY); location.reload(); } }} className="w-full text-center py-2 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">Disattiva licenza</button>
                             </div>
                         )}
                         {settingsTab === 'about' && (
