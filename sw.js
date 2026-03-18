@@ -1,27 +1,31 @@
 /*
- * Officina — Service Worker v12.1
+ * Officina — Service Worker v12.8
  * Strategia: Cache-first per il file HTML (che contiene tutto),
  * Network-first per eventuali risorse esterne.
- * 
+ *
  * Questo file deve trovarsi nella stessa directory di index.html
  * quando Officina è ospitata su un server HTTPS (es. GitHub Pages).
+ *
+ * v12.8: rimosso skipWaiting() automatico dall'install — il nuovo SW
+ * entra in stato "waiting" e viene attivato solo su richiesta esplicita
+ * dell'utente tramite il banner di aggiornamento nell'app.
  */
 
-const CACHE_NAME = 'officina-v12.1';
+const CACHE_NAME = 'officina-v12.8';
 const APP_FILES = [
     './',
     './index.html'
 ];
 
-// Install: pre-cache il file HTML
+// Install: pre-cache il file HTML.
+// NON chiamare skipWaiting() qui — il nuovo SW deve restare in "waiting"
+// finché l'utente non clicca "Aggiorna" nel banner dell'app.
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
             return cache.addAll(APP_FILES);
         })
     );
-    // Attiva subito senza aspettare che le tab vecchie si chiudano
-    self.skipWaiting();
 });
 
 // Activate: elimina cache vecchie di versioni precedenti
@@ -35,6 +39,14 @@ self.addEventListener('activate', event => {
     );
     // Prendi il controllo di tutte le tab aperte immediatamente
     self.clients.claim();
+});
+
+// Message: gestisce il comando SKIP_WAITING inviato dall'app
+// quando l'utente clicca "Aggiorna" nel banner di aggiornamento.
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
 });
 
 // Fetch: cache-first per navigazione, network-first per il resto
